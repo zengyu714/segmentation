@@ -15,7 +15,7 @@
   "LEARNING_RATE" : 1e-6,
 
   "MODE" : "train",
-  "LOG_DIR" : "'./logs/'",
+  "LOG_DIR" : "./logs/",
   "USE_BATCH_NORM" : "False",
 
   "IS_TRAIN_FROM_SCRATCH" : "False"
