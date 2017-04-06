@@ -13,6 +13,8 @@ from utils import *
 with open('config.json', 'r') as f:
     conf = json.load(f)
 
+conf['LOG_DIR'] += 'unet_3d/'
+
 def train():
     # 0 -- train, 1 -- test, 2 -- val
     MODE = tf.placeholder(tf.uint8, shape=[], name='mode')
@@ -55,7 +57,7 @@ def train():
             b = bias_variable([2])
             variable_summaries(b)
         with tf.name_scope('y_conv'):
-            y_conv = tf.nn.relu(conv3d(dc1, W) + b)
+            y_conv = tf.nn.elu(conv3d(dc1, W) + b)
 
         # Acquire output shape to crop the imputs for elementwise computation
         _, y_conv_depth, y_conv_height, y_conv_width, _ = y_conv.get_shape().as_list()
@@ -113,7 +115,7 @@ def train():
             print('Start initializing...')
             tf.global_variables_initializer().run()
         else:
-            ckpt_path = tf.train.latest_checkpoint('./checkpoints/')
+            ckpt_path = tf.train.latest_checkpoint('./checkpoints/unet_3d/')
             saver.restore(sess, ckpt_path)
             start_i = int(ckpt_path.split('-')[-1])
             print('Resume training from %s, do not need initiazing...' % (start_i))
@@ -127,7 +129,7 @@ def train():
                 test_writer.add_summary(summary, i)
                 print('Testing accuracy at step %s: %s\tdice overlap percentage: %s' % (i, acc, dice_overlap))
                 if i % 200 == 0:  # Save the variables to disk
-                    saver.save(sess, './checkpoints/v-net', global_step=i)
+                    saver.save(sess, './checkpoints/unet_3d/unet_3d', global_step=i)
             else:                   # Record execution stats
                 if (i + 1) % 100 == 0:
                     run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)

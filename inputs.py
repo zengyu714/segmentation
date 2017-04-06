@@ -26,6 +26,7 @@ def _translate(xs, ys):
     r1, c1, r2, c2 = np.random.uniform(30, size=4).astype(np.uint8)
     trans_xs, trans_ys = [item[:, r1: r2, c1: c2] for item in [xs, ys]]
     xs, ys = [resize(item, (36, 300, 300), preserve_range=True) for item in [xs, ys]]
+    
     return xs, ys
 
 def load_data(base_path='./data/Train/', mode='train', nii_index=0):
