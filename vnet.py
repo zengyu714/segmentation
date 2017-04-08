@@ -15,7 +15,10 @@ from inputs import *
 with open('config.json', 'r') as f:
     conf = json.load(f)
 
+conf['IS_TRAIN_FROM_SCRATCH'] = 'False'
 conf['LOG_DIR'] += 'vnet/'
+conf['LEARNING_RATE'] = 1e-6
+
 
 def combined_deconv_vnet(dc, cc, kernel_size, out_channels, layer_name):
     with tf.name_scope(layer_name):
@@ -56,108 +59,96 @@ def train():
     dc2 = combined_deconv_vnet(dc3, cc2, kernel_size=3, out_channels=64, layer_name='combined_deconv_2')
     dc1 = combined_deconv_vnet(dc2, cc1, kernel_size=3, out_channels=16, layer_name='combined_deconv_1')
 
-    with tf.name_scope('output'):
-        kernel_size = 1
-        with tf.name_scope('weights'):
-            W_shape = [kernel_size, kernel_size, kernel_size, 16, 2]
-            stddev = np.sqrt(2 / (kernel_size**3 * 16))
-            W = weight_variable(W_shape, stddev)
-            variable_summaries(W)
-        with tf.name_scope('biases'):
-            b = bias_variable([2])
-            variable_summaries(b)
-        with tf.name_scope('y_conv'):
-            y_conv = tf.nn.elu(conv3d(dc1, W) + b)
+    y_conv = dense3d(dc1, 1, 2, 'output')
 
-        # Acquire output shape to crop the imputs for elementwise computation
-        _, y_conv_depth, y_conv_height, y_conv_width, _ = y_conv.get_shape().as_list()
-        tf.summary.image('y_conv', y_conv[:, y_conv_depth // 2, ..., 0, None])
-        tf.summary.image('y_conv', y_conv[:, y_conv_depth // 2, ..., 1, None])
+    # Acquire output shape to crop the imputs for elementwise computation
+    _, y_conv_depth, y_conv_height, y_conv_width, _ = y_conv.get_shape().as_list()
+    tf.summary.image('y_conv', y_conv[:, y_conv_depth // 2, ..., 0, None])
+    tf.summary.image('y_conv', y_conv[:, y_conv_depth // 2, ..., 1, None])
 
-        y_ = tf.placeholder(tf.float32, shape=[conf['BATCH_SIZE'], y_conv_depth, y_conv_height, y_conv_width, 1], name='y_input')
-        tf.summary.image('labels', y_[:, y_conv_depth // 2, ..., 0, None])  # None to keep dims
+    y_ = tf.placeholder(tf.float32, shape=[conf['BATCH_SIZE'], y_conv_depth, y_conv_height, y_conv_width, 1], name='y_input')
+    tf.summary.image('labels', y_[:, y_conv_depth // 2, ..., 0, None])  # None to keep dims
 
-        with tf.name_scope('loss'):
-            y_softmax = tf.nn.softmax(y_conv)
-            dice_loss = dice_coef(y_, y_softmax)
-            dice_pct = evaluation_metrics(y_[..., 0], tf.argmax(y_conv, 4))
-            tf.summary.scalar('dice', dice_pct)
-            tf.summary.scalar('total_loss', dice_loss)
+    with tf.name_scope('loss'):
+        y_softmax = tf.nn.softmax(y_conv)
+        dice_loss = dice_coef(y_, y_softmax)
+        dice_pct = evaluation_metrics(y_[..., 0], tf.argmax(y_conv, 4))
+        tf.summary.scalar('dice', dice_pct)
+        tf.summary.scalar('total_loss', dice_loss)
 
-        with tf.name_scope('train'):
-            train_step = tf.train.AdamOptimizer(conf['LEARNING_RATE']).minimize(dice_loss)
+    with tf.name_scope('train'):
+        train_step = tf.train.AdamOptimizer(conf['LEARNING_RATE']).minimize(dice_loss)
 
+    with tf.name_scope('accuracy'):
+        with tf.name_scope('correct_prediction'):
+            y_pred_img = tf.to_float(tf.argmax(y_conv, 4))
+            correct_predictions = tf.equal(y_pred_img, y_[..., 0])
+        tf.summary.image('predicted_images', y_pred_img[:, y_conv_depth//2, ..., None])
         with tf.name_scope('accuracy'):
-            with tf.name_scope('correct_prediction'):
-                y_pred_img = tf.to_float(tf.argmax(y_conv, 4))
-                correct_predictions = tf.equal(y_pred_img, y_[..., 0])
-            tf.summary.image('predicted_images', y_pred_img[:, y_conv_depth//2, ..., None])
-            with tf.name_scope('accuracy'):
-                accuracy = tf.reduce_mean(tf.cast(correct_predictions, tf.float32))
-            tf.summary.scalar('accuracy', accuracy)
+            accuracy = tf.reduce_mean(tf.cast(correct_predictions, tf.float32))
+        tf.summary.scalar('accuracy', accuracy)
 
-        # Merge all the summaries
-        merged = tf.summary.merge_all()
+    # Merge all the summaries
+    merged = tf.summary.merge_all()
 
-        def feed_dict(mode=0):
-            if mode == 0: data_range = 10
-            if mode == 1: data_range = (10, 11, 12)
-            if mode == 2: data_range = (13, 14)
+    def feed_dict(mode=0):
+        if mode == 0: data_range = 10
+        if mode == 1: data_range = (10, 11, 12)
+        if mode == 2: data_range = (13, 14)
 
-            batch_index = np.random.choice(data_range, size=conf['BATCH_SIZE'])
-            bulk = [load_data(nii_index=i) for i in batch_index]
-            # Convert tuples to np.array
-            batch_images, batch_labels = [np.array(item) for item in list(zip(*bulk))]
+        batch_index = np.random.choice(data_range, size=conf['BATCH_SIZE'])
+        bulk = [load_data(nii_index=i) for i in batch_index]
+        # Convert tuples to np.array
+        batch_images, batch_labels = [np.array(item) for item in list(zip(*bulk))]
 
-            return {x: batch_images, y_: batch_labels, MODE: mode}
+        return {x: batch_images, y_: batch_labels, MODE: mode}
 
-        with tf.Session() as sess:
-            saver = tf.train.Saver()  # Add ops to save and restore all the variables.
-            start_i = 0
-            end_i = int(conf['NUM_EPOCHS'] * conf['TRAIN_SIZE'] * conf['AUGMENT_SIZE'] // conf['BATCH_SIZE'])
+    with tf.Session() as sess:
+        saver = tf.train.Saver()  # Add ops to save and restore all the variables.
+        start_i = 0
+        end_i = int(conf['NUM_EPOCHS'] * conf['TRAIN_SIZE'] * conf['AUGMENT_SIZE'] // conf['BATCH_SIZE'])
 
-            if 1:
-            # if eval(conf['IS_TRAIN_FROM_SCRATCH']):
-                print('Start initializing...')
-                tf.global_variables_initializer().run()
-            else:
-                ckpt_path = tf.train.latest_checkpoint('./checkpoints/vnet/')
-                saver.restore(sess, ckpt_path)
-                start_i = int(ckpt_path.split('-')[-1])
-                print('Resume training from %s, do not need initiazing...' % (start_i))
+        if eval(conf['IS_TRAIN_FROM_SCRATCH']):
+            print('Start initializing...')
+            tf.global_variables_initializer().run()
+        else:
+            ckpt_path = tf.train.latest_checkpoint('./checkpoints/vnet/')
+            saver.restore(sess, ckpt_path)
+            start_i = int(ckpt_path.split('-')[-1])
+            print('Resume training from %s, do not need initiazing...' % (start_i))
 
-            train_writer = tf.summary.FileWriter(conf['LOG_DIR'] + 'train', sess.graph)
-            test_writer = tf.summary.FileWriter(conf['LOG_DIR'] + 'test')
+        train_writer = tf.summary.FileWriter(conf['LOG_DIR'] + 'train', sess.graph)
+        test_writer = tf.summary.FileWriter(conf['LOG_DIR'] + 'test')
 
-            for i in range(start_i, end_i):
-                if i % 10 == 0:
-                    summary, acc, dice_overlap = sess.run([merged, accuracy, dice_pct], feed_dict=feed_dict(mode=1))
-                    test_writer.add_summary(summary, i)
-                    print('Testing accuracy at step %s: %s\tdice overlap percentage: %s' % (i, acc, dice_overlap))
-                    if i % 200 == 0:  # Save the variables to disk
-                        saver.save(sess, './checkpoints/vnet/vnet', global_step=i)
-                else:                   # Record execution stats
-                    if (i + 1) % 100 == 0:
-                        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-                        run_metadata = tf.RunMetadata()
-                        summary, _ = sess.run([merged, train_step],
-                                      feed_dict=feed_dict(),
-                                      options=run_options,
-                                      run_metadata=run_metadata)
-                        train_writer.add_run_metadata(run_metadata, 'step%03d' % (i + 1))
-                        train_writer.add_summary(summary, i + 1)
-                    else:       # Record a summary
-                        summary, _ = sess.run([merged, train_step], feed_dict=feed_dict())
+        for i in range(start_i, end_i):
+            if i % 10 == 0:
+                summary, acc, dice_overlap = sess.run([merged, accuracy, dice_pct], feed_dict=feed_dict(mode=1))
+                test_writer.add_summary(summary, i)
+                print('Testing accuracy at step %s: %s\tdice overlap percentage: %s' % (i, acc, dice_overlap))
+                if i % 200 == 0:  # Save the variables to disk
+                    saver.save(sess, './checkpoints/vnet/vnet', global_step=i)
+            else:                   # Record execution stats
+                if (i + 1) % 100 == 0:
+                    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+                    run_metadata = tf.RunMetadata()
+                    summary, _ = sess.run([merged, train_step],
+                                  feed_dict=feed_dict(),
+                                  options=run_options,
+                                  run_metadata=run_metadata)
+                    train_writer.add_run_metadata(run_metadata, 'step%03d' % (i + 1))
+                    train_writer.add_summary(summary, i + 1)
+                else:       # Record a summary
+                    summary, _ = sess.run([merged, train_step], feed_dict=feed_dict())
 
-            total_acc = []
-            for i in range(int(conf['VAL_SIZE'] * conf['AUGMENT_SIZE'] // conf['BATCH_SIZE'])):
-                acc = sess.run([accuracy], feed_dict(mode=2))
-                total_acc.append(acc)
+        total_acc = []
+        for i in range(int(conf['VAL_SIZE'] * conf['AUGMENT_SIZE'] // conf['BATCH_SIZE'])):
+            acc = sess.run([accuracy], feed_dict(mode=2))
+            total_acc.append(acc)
 
-            print('Final accuracy is %7.3f' % np.mean(total_acc))
+        print('Final accuracy is %7.3f' % np.mean(total_acc))
 
-            train_writer.close()
-            test_writer.close()
+        train_writer.close()
+        test_writer.close()
 
 def main(_):
     if eval(conf['IS_TRAIN_FROM_SCRATCH']):

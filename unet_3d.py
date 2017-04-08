@@ -14,6 +14,9 @@ with open('config.json', 'r') as f:
     conf = json.load(f)
 
 conf['LOG_DIR'] += 'unet_3d/'
+conf['LEARNING_RATE'] = 1e-6
+conf['IS_TRAIN_FROM_SCRATCH'] = 'False'
+
 
 def train():
     # 0 -- train, 1 -- test, 2 -- val
@@ -46,23 +49,12 @@ def train():
     dc2 = combined_deconv(dc3, cc2, kernel_size=3, out_channels=64, layer_name='combined_deconv_2')
     dc1 = combined_deconv(dc2, cc1, kernel_size=3, out_channels=16, layer_name='combined_deconv_1')
 
-    with tf.name_scope('output'):
-        kernel_size = 1
-        with tf.name_scope('weights'):
-            W_shape = [kernel_size, kernel_size, kernel_size, 16, 2]
-            stddev = np.sqrt(2 / (kernel_size**3 * 16))
-            W = weight_variable(W_shape, stddev)
-            variable_summaries(W)
-        with tf.name_scope('biases'):
-            b = bias_variable([2])
-            variable_summaries(b)
-        with tf.name_scope('y_conv'):
-            y_conv = tf.nn.elu(conv3d(dc1, W) + b)
+    y_conv = dense3d(dc1, 1, 2, 'output')
 
-        # Acquire output shape to crop the imputs for elementwise computation
-        _, y_conv_depth, y_conv_height, y_conv_width, _ = y_conv.get_shape().as_list()
-        tf.summary.image('y_conv', y_conv[:, y_conv_depth // 2, ..., 0, None])
-        tf.summary.image('y_conv', y_conv[:, y_conv_depth // 2, ..., 1, None])
+    # Acquire output shape to crop the imputs for elementwise computation
+    _, y_conv_depth, y_conv_height, y_conv_width, _ = y_conv.get_shape().as_list()
+    tf.summary.image('y_conv', y_conv[:, y_conv_depth // 2, ..., 0, None])
+    tf.summary.image('y_conv', y_conv[:, y_conv_depth // 2, ..., 1, None])
 
     y_ = tf.placeholder(tf.float32, shape=[conf['BATCH_SIZE'], y_conv_depth, y_conv_height, y_conv_width, 1], name='y_input')
     tf.summary.image('labels', y_[:, y_conv_depth // 2, ..., 0, None])  # None to keep dims

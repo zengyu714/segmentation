@@ -34,30 +34,11 @@ def max_pool_optional_norm(x, n, to_norm=eval(conf['USE_BATCH_NORM'])):
         pool = tf.map_fn(lambda p: tf.nn.local_response_normalization(p, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75), pool)
     return pool
 
-def conv3d_as_pool(inputs, out_channels, layer_name, activation_func=tf.nn.elu):
-    kernel_size = 2
-    _, depth, height, width, in_channels = inputs.get_shape().as_list()
-    with tf.name_scope('weights'):
-        W_shape = [kernel_size, kernel_size, kernel_size, in_channels, out_channels]
-        stddev = np.sqrt(2 / (kernel_size**3 * in_channels))
-        W = weight_variable(W_shape, stddev)
-        variable_summaries(W)
-    with tf.name_scope('biases'):
-        b = bias_variable([out_channels])
-        variable_summaries(b)
-    with tf.name_scope('activation'):
-        z = tf.nn.conv3d(inputs, W, strides=[1, 2, 2, 2, 1], padding='SAME')
-        z = activation_func(z)
-    tf.summary.image('activation', z[:, depth//4, ..., 1, None])
-    return z
-
-def conv3d(x, W):
-    return tf.nn.conv3d(x, W, strides=[1, 1, 1, 1, 1], padding='SAME')
-
-def combined_conv(inputs, kernel_size, out_channels, layer_name, activation_func=tf.nn.elu):
+def dense3d(inputs, kernel_size, out_channels, layer_name, activation_func=tf.nn.relu, strides=[1, 1, 1, 1, 1]):
+    """Compute the z = f(W * x + b)"""
     _, depth, height, width, in_channels = inputs.get_shape().as_list()
     with tf.name_scope(layer_name):
-        with tf.name_scope('sub_conv1'):
+        with tf.name_scope('conv'):
             with tf.name_scope('weights'):
                 W_shape = [kernel_size, kernel_size, kernel_size, in_channels, out_channels]
                 stddev = np.sqrt(2 / (kernel_size**3 * in_channels))
@@ -67,21 +48,23 @@ def combined_conv(inputs, kernel_size, out_channels, layer_name, activation_func
                 b = bias_variable([out_channels])
                 variable_summaries(b)
             with tf.name_scope('activation'):
-                z_1 = activation_func(conv3d(inputs, W) + b)
-            tf.summary.image('activation', z_1[:, depth//2, ..., 1, None])
-        with tf.name_scope('sub_conv2'):
-            with tf.name_scope('weights'):
-                W_shape = [kernel_size, kernel_size, kernel_size, out_channels, out_channels]
-                stddev = np.sqrt(2 / (kernel_size**3 * out_channels))
-                W = weight_variable(W_shape, stddev)
-                variable_summaries(W)
-            with tf.name_scope('biases'):
-                b = bias_variable([out_channels])
-                variable_summaries(b)
-            with tf.name_scope('activation'):
-                z_2 = activation_func(conv3d(z_1, W) + b)
-            tf.summary.image('activation', z_2[:, depth//2, ..., 1, None])
-        return z_2
+                z = activation_func(conv3d(inputs, W, strides) + b)
+            tf.summary.image('activation', z[:, depth//(strides[1] * 2), ..., 1, None])
+            return z
+
+def conv3d_as_pool(inputs, out_channels, layer_name, activation_func=tf.nn.relu):
+    kernel_size = 2
+    strides = [1, 2, 2, 2, 1]
+    return dense3d(inputs, kernel_size, out_channels, layer_name, activation_func, strides)
+
+def conv3d(x, W, strides=[1, 1, 1, 1, 1]):
+    return tf.nn.conv3d(x, W, strides=strides, padding='SAME')
+
+def combined_conv(inputs, kernel_size, out_channels, layer_name, activation_func=tf.nn.relu):
+    _, depth, height, width, in_channels = inputs.get_shape().as_list()
+    with tf.name_scope(layer_name):
+        z_1 = dense3d(inputs, kernel_size, out_channels, 'sub_conv1', activation_func)
+        return dense3d(z_1, kernel_size, out_channels, 'sub_conv2', activation_func)
 
 def deconv3d(x, W, deconv_outshape, upsample_factor):
     return tf.nn.conv3d_transpose(x, W, deconv_outshape,
@@ -97,7 +80,7 @@ def crop(lhs, rhs):
     cropped_lhs.set_shape(rhs.get_shape().as_list())
     return cropped_lhs
 
-def deconv_as_up(inputs, kernel_size, out_channels, layer_name, activation_func=tf.nn.elu):
+def deconv_as_up(inputs, kernel_size, out_channels, layer_name, activation_func=tf.nn.relu):
     batch_size, depth, height, width, input_channels = inputs.get_shape().as_list()
     with tf.name_scope(layer_name):
         with tf.name_scope('upsample'):
@@ -116,7 +99,7 @@ def deconv_as_up(inputs, kernel_size, out_channels, layer_name, activation_func=
             tf.summary.image('activation', up[:, depth // 2, ..., 1, None])
         return up
 
-def combined_deconv(inputs, lhs, kernel_size, out_channels, layer_name, activation_func=tf.nn.elu):
+def combined_deconv(inputs, lhs, kernel_size, out_channels, layer_name, activation_func=tf.nn.relu):
     batch_size, depth, height, width, input_channels = inputs.get_shape().as_list()
     with tf.name_scope(layer_name):
         with tf.name_scope('upsample'):
