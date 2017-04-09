@@ -4,20 +4,16 @@
   "TEST_SIZE" : 3,
   "VAL_SIZE" : 2,
 
-  "DEPTH" : 36,
-  "HEIGHT" : 300,
-  "WIDTH" : 300 ,
-  "CHANNEL" : 1,
-
-  "BATCH_SIZE" : 2,
+  "BATCH_SIZE" : 1,
   "AUGMENT_SIZE" : 10000,
   "NUM_EPOCHS" : 100,
   "LEARNING_RATE" : 1e-6,
 
   "MODE" : "train",
   "LOG_DIR" : "./logs/",
-  "USE_BATCH_NORM" : "False",
+  "CHECKPOINTS_DIR" : "./checkpoints/",
 
+  "USE_BATCH_NORM" : "False",
   "IS_TRAIN_FROM_SCRATCH" : "False"
 
 }
