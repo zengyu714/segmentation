@@ -133,11 +133,26 @@ def show_slices(im_3d, indices=None):
     plt.rcParams['image.cmap'] = 'gray'
     if indices is None:
         indices = np.array(im_3d.shape) // 2
-    assert len(indices) == 3, """Except 3-d array,
-                                 but receive %d-d array indexing.""" % len(indices)
+    assert len(indices) == 3, """Except 3-d array, but receive %d-d array
+    indexing.""" % len(indices)
+
     x_th, y_th, z_th = indices
     fig, axes = plt.subplots(1, 3)
     axes[0].imshow(im_3d[x_th, :, :])
     axes[1].imshow(im_3d[:, y_th, :])
     axes[2].imshow(im_3d[:, :, z_th])
     plt.suptitle("Center slices for spine image")
+
+def plot_image_and_prediction(i=0, j_slice=None):
+    data_path = os.listdir('./data/Test/')
+    data = nib.load('./data/Test/' + data_path[i]).get_data()
+    pred_label = np.load('./pred/check_' + str(i) + '.npy')[0]
+    assert(data.shape != pred_label.shape, "Shape is not equal, "
+           "pred_shape{0!s} v.s. data_shape{1!s}".format(*data.shape, *pred_label.shape))
+
+    if j_slice is None:
+        j_slice = pred_label.shape[0] // 2
+
+    plt.imshow(data[j_slice, :, :], 'gray')
+    plt.imshow(pred_label[j_slice, :, :], 'jet', alpha=0.5)
+    plt.show()

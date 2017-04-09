@@ -13,8 +13,8 @@ from utils import *
 with open('config.json', 'r') as f:
     conf = json.load(f)
 
-conf['IS_TRAIN_FROM_SCRATCH'] = 'True'
-conf['LEARNING_RATE'] = 1e-6
+conf['IS_TRAIN_FROM_SCRATCH'] = 'False'
+conf['LEARNING_RATE'] = 1e-7
 conf['LOG_DIR'] += 'unet_3d/'
 conf['CHECKPOINTS_DIR'] += 'unet_3d/'
 
@@ -51,8 +51,8 @@ def train():
     dc1 = crop(cc1, combined_deconv(dc2, cc1, kernel_size=3, in_channels=64, out_channels=16, layer_name='combined_deconv_1'))
 
     y_conv = dense3d(dc1, kernel_size=1, in_channels=16, out_channels=2, layer_name='output')
-    tf.summary.image('y_conv', y_conv[:, tf.shape(y_conv)[1] // 2, ..., 0, None])
-    tf.summary.image('y_conv', y_conv[:, tf.shape(y_conv)[1] // 2, ..., 1, None])
+    tf.summary.image('y_conv_0', y_conv[:, tf.shape(y_conv)[1] // 2, ..., 0, None])
+    tf.summary.image('y_conv_1', y_conv[:, tf.shape(y_conv)[1] // 2, ..., 1, None])
 
     y_ = tf.placeholder(tf.float32, shape=[1, None, None, None, 1], name='y_input')
     tf.summary.image('labels', y_[:, tf.shape(y_conv)[1] // 2, ..., 0, None])  # None to keep dims
