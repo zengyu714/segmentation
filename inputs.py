@@ -72,7 +72,8 @@ def load_data(base_path='./data/Train/', nii_index=0):
     ys = ys[:, ::flipud, ::fliplr]
 
     # Normalize images.
-    xs = (xs - np.mean(xs)) / np.std(xs)
+    # xs = (xs - np.mean(xs)) / np.std(xs)
+
     # Regenerate the binary label.
     ys = (ys > 0).astype(np.uint8)
 
@@ -92,5 +93,6 @@ def load_inference(base_path='./data/Test/Test_Subject', nii_index=0):
     xs = xs / np.max(xs)
 
     # Normalize images.
-    xs = (xs - np.mean(xs)) / np.std(xs)
+    # xs = (xs - np.mean(xs)) / np.std(xs)
+    
     return xs[None, ..., None]

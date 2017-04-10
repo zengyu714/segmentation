@@ -15,7 +15,7 @@ with open('config.json', 'r') as f:
     conf = json.load(f)
 
 conf['IS_TRAIN_FROM_SCRATCH'] = 'False'
-conf['LEARNING_RATE'] = 2e-8
+conf['LEARNING_RATE'] = 1e-7
 conf['LOG_DIR'] += 'cnet_dense/'
 conf['CHECKPOINTS_DIR'] += 'cnet_dense/'
 

@@ -12,7 +12,7 @@ def weight_variable(shape, stddev=0.1):
     return tf.Variable(initial)
 
 def bias_variable(shape):
-    initial = tf.constant(0.1, shape=shape)
+    initial = tf.constant(0.001, shape=shape)
     return tf.Variable(initial)
 
 def variable_summaries(var):
@@ -44,7 +44,7 @@ def dense3d(inputs, kernel_size, in_channels, out_channels, layer_name, activati
         with tf.name_scope('conv'):
             with tf.name_scope('weights'):
                 W_shape = [kernel_size, kernel_size, kernel_size, in_channels, out_channels]
-                stddev = tf.to_float(tf.sqrt(2 / (kernel_size**3 * in_channels)))  # required by `truncated_normal`
+                stddev = tf.to_float(tf.sqrt(2 / (kernel_size**3 * in_channels)))  # float32 is required by `truncated_normal`
                 W = weight_variable(W_shape, stddev)
                 variable_summaries(W)
             with tf.name_scope('biases'):
@@ -52,7 +52,7 @@ def dense3d(inputs, kernel_size, in_channels, out_channels, layer_name, activati
                 variable_summaries(b)
             with tf.name_scope('activation'):
                 z = activation_func(conv3d(inputs, W, strides) + b)
-            tf.summary.image('activation', z[:, depth//(strides[1] * 2), ..., 1, None])
+            tf.summary.image('activation', z[:, depth//(strides[1] * 2), ..., 0, None])
             return z
 
 def conv3d_as_pool(inputs, in_channels, out_channels, layer_name, activation_func=tf.nn.relu):
@@ -94,7 +94,7 @@ def deconv_as_up(inputs, kernel_size, in_channels, out_channels, layer_name, act
             with tf.name_scope('deconv'):
                 deconv_outshape = [1, tf.shape(inputs)[1]*2, tf.shape(inputs)[2]*2, tf.shape(inputs)[3]*2, out_channels]
                 up = activation_func(deconv3d(inputs, W, deconv_outshape, upsample_factor=2) + b)
-            tf.summary.image('activation', up[:,  tf.shape(inputs)[1] // 2, ..., 1, None])
+            tf.summary.image('activation', up[:,  tf.shape(inputs)[1] // 2, ..., 0, None])
         return up
 
 def combined_deconv(inputs, lhs, kernel_size, in_channels, out_channels, layer_name, activation_func=tf.nn.relu):

@@ -16,7 +16,7 @@ with open('config.json', 'r') as f:
     conf = json.load(f)
 
 conf['IS_TRAIN_FROM_SCRATCH'] = 'False'
-conf['LEARNING_RATE'] = 1e-7  # Change from 1e-6 to 1e-7 at step 22400
+conf['LEARNING_RATE'] = 1e-6  # Change from 1e-6 to 1e-7 at step 22400
 conf['LOG_DIR'] += 'vnet/'
 conf['CHECKPOINTS_DIR'] += 'vnet/'
 
