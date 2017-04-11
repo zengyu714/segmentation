@@ -8,8 +8,6 @@ with open('config.json', 'r') as f:
     conf = json.load(f)
 
 conf['IS_TRAIN_FROM_SCRATCH'] = 'True'
-# Step 12000, 5e-6 --> 1e-6
-conf['LEARNING_RATE'] = 5e-6
 conf['LOG_DIR'] += 'refineDenseNet/'
 conf['CHECKPOINTS_DIR'] += 'refineDenseNet/'
 
@@ -27,14 +25,14 @@ def _bn_relu_conv(inputs, kernel_size, in_channels, out_channels, layer_name, ac
 
 def _dense_block(inputs, kernel_size, in_channels, layer_name, activation_func=tf.nn.relu, strides=[1, 1, 1, 1, 1]):
     with tf.name_scope(layer_name):
-        layer_1 = _bn_relu_conv(inputs, kernel_size, in_channels, in_channels, 'layer_1', activation_func, strides)
+        layer_1 = _bn_relu_conv(inputs, kernel_size, in_channels * 1, in_channels, 'layer_1', activation_func, strides)
         concat = tf.concat([inputs, layer_1], axis=4, name='concat_1')  # x 2
-        layer_2 = _bn_relu_conv(concat, kernel_size, in_channels * 2, in_channels * 2, 'layer_2')
-        concat = tf.concat([concat, layer_2], axis=4, name='concat_2')  # x 4
-        layer_3 = _bn_relu_conv(concat, kernel_size, in_channels * 4, in_channels * 4, 'layer_3')
-        concat = tf.concat([concat, layer_3], axis=4, name='concat_3')  # x 8
-        layer_4 = _bn_relu_conv(concat, kernel_size, in_channels * 8, in_channels * 8, 'layer_4')
-        return tf.concat([layer_1, layer_2, layer_3, layer_4], axis=4, name='concat_4')  # x (1 + 2 + 4 + 8)
+        layer_2 = _bn_relu_conv(concat, kernel_size, in_channels * 2, in_channels, 'layer_2')
+        concat = tf.concat([concat, layer_2], axis=4, name='concat_2')  # x 3
+        layer_3 = _bn_relu_conv(concat, kernel_size, in_channels * 3, in_channels, 'layer_3')
+        concat = tf.concat([concat, layer_3], axis=4, name='concat_3')  # x 4
+        layer_4 = _bn_relu_conv(concat, kernel_size, in_channels * 4, in_channels, 'layer_4')
+        return tf.concat([layer_1, layer_2, layer_3, layer_4], axis=4, name='concat_4')  # in_channels * 4
 
 def _transition_down(inputs, kernel_size, in_channels, out_channels, layer_name):
     n = 2  # downsample factor
@@ -78,16 +76,16 @@ def train():
 
     pre_conv = dense3d(x, kernel_size=3, in_channels=1, out_channels=16, layer_name='pre_conv')
     db_1 = _dense_block(pre_conv, kernel_size=3, in_channels=16, layer_name='dense_block_1')
-    mini_1 = _transition_down(db_1, kernel_size=1, in_channels=15 * 16, out_channels=16, layer_name='scaled_x2')
+    mini_1 = _transition_down(db_1, kernel_size=1, in_channels=4 * 16, out_channels=16, layer_name='scaled_x2')
 
     db_2 = _dense_block(mini_1, kernel_size=3, in_channels=16, layer_name='dense_block_2')
-    mini_2 = _transition_down(db_2, kernel_size=1, in_channels=15 * 16, out_channels=64, layer_name='scaled_x4')
+    mini_2 = _transition_down(db_2, kernel_size=1, in_channels=4 * 16, out_channels=64, layer_name='scaled_x4')
 
     db_3 = _dense_block(mini_2, kernel_size=3, in_channels=64, layer_name='dense_block_3')
-    mini_3 = _transition_down(db_3, kernel_size=1, in_channels=15 * 64, out_channels=128, layer_name='scaled_x8')
+    mini_3 = _transition_down(db_3, kernel_size=1, in_channels=4 * 64, out_channels=128, layer_name='scaled_x8')
 
     db_4 = _dense_block(mini_3, kernel_size=3, in_channels=128, layer_name='dense_block_4')
-    mini_4 = _transition_down(db_4, kernel_size=1, in_channels=15 * 128, out_channels=256, layer_name='scaled_x16')
+    mini_4 = _transition_down(db_4, kernel_size=1, in_channels=4 * 128, out_channels=256, layer_name='scaled_x16')
 
     with tf.name_scope('refineNet_4'):
         # Residual Conv Unit

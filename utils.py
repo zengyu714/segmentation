@@ -12,7 +12,7 @@ def weight_variable(shape, stddev=0.1):
     return tf.Variable(initial)
 
 def bias_variable(shape):
-    initial = tf.constant(0.001, shape=shape)
+    initial = tf.constant(0.01, shape=shape)
     return tf.Variable(initial)
 
 def variable_summaries(var):
