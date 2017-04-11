@@ -6,7 +6,7 @@
 
   "BATCH_SIZE" : 1,
   "AUGMENT_SIZE" : 10000,
-  "NUM_EPOCHS" : 100,
+  "NUM_EPOCHS" : 30,
   "LEARNING_RATE" : 1e-6,
 
   "MODE" : "train",

@@ -94,7 +94,7 @@ def deconv_as_up(inputs, kernel_size, in_channels, out_channels, layer_name, act
             with tf.name_scope('deconv'):
                 deconv_outshape = [1, tf.shape(inputs)[1]*2, tf.shape(inputs)[2]*2, tf.shape(inputs)[3]*2, out_channels]
                 up = activation_func(deconv3d(inputs, W, deconv_outshape, upsample_factor=2) + b)
-            tf.summary.image('activation', up[:,  tf.shape(inputs)[1] // 2, ..., 0, None])
+            tf.summary.image('activation', up[:, tf.shape(inputs)[1] // 2, ..., 0, None])
         return up
 
 def combined_deconv(inputs, lhs, kernel_size, in_channels, out_channels, layer_name, activation_func=tf.nn.relu):
