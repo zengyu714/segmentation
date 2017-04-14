@@ -147,8 +147,8 @@ def plot_image_and_prediction(i=0, j_slice=None):
     data_path = os.listdir('./data/Test/')
     data = nib.load('./data/Test/' + data_path[i]).get_data()
     pred_label = np.load('./pred/check_' + str(i) + '.npy')[0]
-    assert(data.shape != pred_label.shape, "Shape is not equal, "
-           "pred_shape{0!s} v.s. data_shape{1!s}".format(*data.shape, *pred_label.shape))
+    assert data.shape != pred_label.shape, """Shape is not equal, 
+           pred_shape{0!s} v.s. data_shape{1!s}""".format(*data.shape, *pred_label.shape)
 
     if j_slice is None:
         j_slice = pred_label.shape[0] // 2

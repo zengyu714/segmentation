@@ -30,6 +30,7 @@ def _rotate(xs, ys):
     xs, ys = [rotate(item, degree, mode='symmetric', preserve_range=True) for item in [HWC_xs, HWC_ys]]
     # Back to [height, width, channels].
     xs, ys = [np.transpose(item, [2, 0, 1]) for item in [xs, ys]]
+
     return xs, ys
 
 def _translate(xs, ys):
@@ -41,6 +42,7 @@ def _translate(xs, ys):
     skewed_samples = np.uint8((- samples + 2) * 30)    # skewed_samples in range [1, 31]
     r1, c1, r2, c2 = skewed_samples                    # discard 0 for indexing `-0`
     trans_xs, trans_ys = [item[:, r1: -r2, c1: -c2] for item in [xs, ys]]
+
     return trans_xs, trans_ys
 
 def load_data(base_path='./data/Train/', nii_index=0):
@@ -72,12 +74,13 @@ def load_data(base_path='./data/Train/', nii_index=0):
     ys = ys[:, ::flipud, ::fliplr]
 
     # Normalize images.
-    # xs = (xs - np.mean(xs)) / np.std(xs)
+    # xs = (xs - np.mean(xs, axis=0)) / np.std(xs, axis=0)
 
-    # Regenerate the binary label.
+    # Regenerate the binary label, just in case.
     ys = (ys > 0).astype(np.uint8)
 
     xs, ys = [item[..., np.newaxis] for item in [xs, ys]]
+
     return xs, ys
 
 def load_inference(base_path='./data/Test/Test_Subject', nii_index=0):
@@ -93,6 +96,6 @@ def load_inference(base_path='./data/Test/Test_Subject', nii_index=0):
     xs = xs / np.max(xs)
 
     # Normalize images.
-    # xs = (xs - np.mean(xs)) / np.std(xs)
-    
+    # xs = (xs - np.mean(xs, axis=0)) / np.std(xs, axis=0)
+
     return xs[None, ..., None]

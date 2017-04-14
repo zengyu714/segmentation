@@ -8,8 +8,8 @@ with open('config.json', 'r') as f:
     conf = json.load(f)
 
 conf['IS_TRAIN_FROM_SCRATCH'] = 'False'
-# Step 12000, 5e-6 --> 1e-6
-conf['LEARNING_RATE'] = 5e-6
+# Step 12000, 5e-6 --> 2e-6
+conf['LEARNING_RATE'] = 2e-6
 conf['LOG_DIR'] += 'refineNet/'
 conf['CHECKPOINTS_DIR'] += 'refineNet/'
 
