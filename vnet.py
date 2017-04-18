@@ -8,7 +8,7 @@ from layers import *
 with open('config.json', 'r') as f:
     conf = json.load(f)
 
-conf['IS_TRAIN_FROM_SCRATCH'] = 'False'
+conf['IS_TRAIN_FROM_SCRATCH'] = 'True'
 conf['LEARNING_RATE'] = 2e-6
 conf['LOG_DIR'] += 'vnet/'
 conf['CHECKPOINTS_DIR'] += 'vnet/'

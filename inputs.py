@@ -51,29 +51,32 @@ def _translate(xs, ys):
 
 def weights_map(ys):
     """Compute corresponding weight map when use cross entropy loss.
-    
+
     Argument:
         ys: [depth, height, width]
-    
+
     Return:
         weights_map: [depth, height, width]
     """
-    
+    weights = ys.astype(np.float64)
+
     # Balance class frequencies.
     cls_ratio = np.sum(1 - ys) / np.sum(ys)
     weights *= cls_ratio
-    
+
     # Generate boundaries using morphological operation.
     se = generate_binary_structure(3, 1)
     bigger = binary_dilation(ys, structure=se).astype(np.float64)
     small = binary_erosion(ys, structure=se).astype(np.float64)
     edge = bigger - small
-    
+
     # Balance edge frequencies.
     edge_ratio = np.sum(bigger) / np.sum(edge)
     edge *= np.exp(edge_ratio) * 10
-    
-    return weights + edge
+
+    # `weights` should > 0
+    # `targets * -log(sigmoid(logits)) * pos_weight + (1 - targets) * -log(1 - sigmoid(logits))`
+    return weights + edge + 1
 
 def load_data(base_path='./data/Train/', nii_index=0):
     """Load nii data to numpy ndarray with **arbitrary** size.
@@ -87,9 +90,9 @@ def load_data(base_path='./data/Train/', nii_index=0):
     # use os.path.join() better probably
     label_path = [base_path + p for p in os.listdir(base_path) if p.endswith('Label.nii')]
     image_path = [p.replace('_Label', '') for p in label_path]
-    
+
     xs, ys = [nib.load(p[nii_index]).get_data() for p in [image_path, label_path]]
-    
+
     # Normalize image to range [0, 1] for image processing.
     local_max = np.max(xs, axis=(1, 2), keepdims=True)
     local_min = np.min(xs, axis=(1, 2), keepdims=True)
@@ -111,7 +114,7 @@ def load_data(base_path='./data/Train/', nii_index=0):
     # Regenerate the binary label, just in case.
     ys = (ys > 0).astype(np.uint8)
     weights = weights_map(ys)
-    
+
     xs, ys, weights = [item[..., np.newaxis] for item in [xs, ys, weights]]
     return xs, ys, weights
 
