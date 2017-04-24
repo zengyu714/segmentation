@@ -14,7 +14,7 @@
 # Results
 :new_moon_with_face: pretty cool.
 + test image_1
-![test_1_slice_20](01_20.png)
+![test_1_slice_20](results/01_20.png)
 
-+ test image_6 
-![test_6_slice_20](06_20.png)
++ test image_6
+![test_6_slice_20](results/06_20.png)
