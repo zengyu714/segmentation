@@ -9,3 +9,6 @@ __pycache__/
 
 # Source data
 /data/
+
+# Image files
+*.png

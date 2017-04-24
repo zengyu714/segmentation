@@ -8,8 +8,13 @@
 
 
 # Architecture
-+ **U-net 3D**: derived from [U-Net](https://arxiv.org/pdf/1505.04597.pdf).
-
++ **V-net 3D**: see [more](https://arxiv.org/abs/1606.04797).
++ **RefineNet**: see [more](https://arxiv.org/abs/1611.06612).
 
 # Results
-:new_moon_with_face: Wait a moment...
+:new_moon_with_face: pretty cool.
++ test image_1
+![test_1_slice_20](01_20.png)
+
++ test image_6 
+![test_6_slice_20](06_20.png)
