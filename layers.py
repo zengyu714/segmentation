@@ -26,7 +26,8 @@ def variable_summaries(var):
         tf.summary.histogram('histogram', var)
 
 def conv3d(inputs, kernel_size, in_channels, out_channels, layer_name, activation_func=tf.nn.relu, strides=[1, 1, 1, 1, 1]):
-    """Compute the z = f(W * x + b)"""
+    """Compute the z = f(W * x + b)."""
+
     depth = tf.shape(inputs)[1]
     with tf.name_scope(layer_name):
         with tf.name_scope('weights'):
@@ -46,7 +47,12 @@ def conv3d_as_pool(inputs, kernel_size, in_channels, out_channels, layer_name, a
     return conv3d(inputs, kernel_size, in_channels, out_channels, layer_name, activation_func, strides)
 
 def conv3d_x3(inputs, kernel_size, in_channels, out_channels, layer_name):
-    """Three serial convs with a residual connection."""
+    """Three serial convs with a residual connection.
+
+    Structure:
+        inputs --> ① --> ② --> ③ --> outputs
+                   ↓ -->-->--> ↑
+    """
     with tf.name_scope(layer_name):
         # Adjust channels for final add.
         z = conv3d(inputs, kernel_size, in_channels, out_channels, 'dense_1')
@@ -54,8 +60,25 @@ def conv3d_x3(inputs, kernel_size, in_channels, out_channels, layer_name):
         z_out = conv3d(z_out, kernel_size, out_channels, out_channels, 'dense_3')
         return z + z_out
 
+def conv3d_x4(inputs, kernel_size, in_channels, out_channels, layer_name):
+    """Three serial convs with a residual connection.
+
+    Structure:
+                         ↑ -->-->--> ↓
+        inputs --> ① --> ② --> ③ --> ④ --> outputs
+                   ↓ -->-->--> ↑
+    """
+    with tf.name_scope(layer_name):
+        # Adjust channels for final add.
+        z_1 = conv3d(inputs, kernel_size, in_channels, out_channels, 'dense_1')
+        z_2 = conv3d(z_1, kernel_size, out_channels, out_channels, 'dense_2')
+        z_out = z_1 + conv3d(z_2, kernel_size, out_channels, out_channels, 'dense_3')
+        z_out = conv3d(z_out, kernel_size, out_channels, out_channels, 'dense_4')
+        return z_2 + z_out
+
 def crop(lhs, rhs):
     """Assume lhs is bigger."""
+
     lhs_shape = tf.shape(lhs)
     rhs_shape = tf.shape(rhs)
     offsets = [0, (lhs_shape[1] - rhs_shape[1]) // 2, (lhs_shape[2] - rhs_shape[2]) // 2, (lhs_shape[3] - rhs_shape[3]) // 2, 0]
@@ -82,11 +105,12 @@ def deconv3d_as_up(inputs, kernel_size, in_channels, out_channels, layer_name, a
         tf.summary.image('activation', up[:, tf.shape(inputs)[1] // 2, ..., 0, None])
     return up
 
-def deconv3d_x3(lhs, rhs, kernel_size, in_channels, out_channels, layer_name):
+def deconv3d_x3(lhs, rhs, kernel_size, in_channels, out_channels, layer_name, conv_module=conv3d_x3):
      with tf.name_scope(layer_name):
-        rhs_up = deconv3d_as_up(rhs, kernel_size, in_channels, out_channels, layer_name='up')
-        rhs_add = crop(rhs_up, lhs) + lhs
-        conv = conv3d_x3(rhs_add, kernel_size, out_channels, out_channels, layer_name='conv')
+        rhs_up = deconv3d_as_up(rhs, kernel_size, in_channels, out_channels, layer_name='rhs_up')
+        lhs_conv = conv3d(lhs, kernel_size, out_channels // 2, out_channels, layer_name='lhs_conv')
+        rhs_add = crop(rhs_up, lhs_conv) + lhs_conv
+        conv = conv_module(rhs_add, kernel_size, out_channels, out_channels, layer_name='conv')
         return crop(conv, rhs_add)
 
 def deconv3d_concat(lhs, rhs, kernel_size, in_channels, out_channels, layer_name):

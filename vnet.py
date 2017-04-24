@@ -9,9 +9,17 @@ with open('config.json', 'r') as f:
     conf = json.load(f)
 
 conf['IS_TRAIN_FROM_SCRATCH'] = 'True'
-conf['LEARNING_RATE'] = 2e-6
+conf['LEARNING_RATE'] = 3e-6
 conf['LOG_DIR'] += 'vnet/'
 conf['CHECKPOINTS_DIR'] += 'vnet/'
+
+# No improvement!
+def tangled_conv3d(inputs, kernel_size, in_channels, out_channels, layer_name):
+    """Compose three conv3d_x3 with residual connetion"""
+    z = conv3d_x3(inputs, kernel_size, in_channels, out_channels, layer_name='conv3d_x3_1')
+    z_out = conv3d_x3(z, kernel_size, out_channels, out_channels, layer_name='conv3d_x3_2')
+    z_out = conv3d_x3(z_out, kernel_size, out_channels, out_channels, layer_name='conv3d_x3_3')
+    return z + z_out
 
 def train():
     # 0 -- train, 1 -- test, 2 -- val
@@ -22,36 +30,40 @@ def train():
         tf.summary.image('images', x[:, tf.shape(x)[1] // 2])  # requires 4-d tensor, here takes the middle slice across x-axis
 
     conv_1 = conv3d_x3(x, kernel_size=3, in_channels=1, out_channels=16, layer_name='conv_1')
-    pool = conv3d_as_pool(conv_1, kernel_size=3, in_channels=16, out_channels=64, layer_name='pool1')
+    pool = conv3d_as_pool(conv_1, kernel_size=3, in_channels=16, out_channels=32, layer_name='pool1')
 
-    conv_2 = conv3d_x3(pool, kernel_size=3, in_channels=64, out_channels=64, layer_name='conv_2')
-    pool = conv3d_as_pool(conv_2, kernel_size=3, in_channels=64, out_channels=128, layer_name='pool2')
+    conv_2 = conv3d_x3(pool, kernel_size=3, in_channels=32, out_channels=32, layer_name='conv_2')
+    pool = conv3d_as_pool(conv_2, kernel_size=3, in_channels=32, out_channels=64, layer_name='pool2')
 
-    conv_3 = conv3d_x3(pool, kernel_size=3, in_channels=128, out_channels=128, layer_name='conv_3')
-    pool = conv3d_as_pool(conv_3, kernel_size=3, in_channels=128, out_channels=256, layer_name='pool3')
+    conv_3 = conv3d_x3(pool, kernel_size=3, in_channels=64, out_channels=64, layer_name='conv_3')
+    pool = conv3d_as_pool(conv_3, kernel_size=3, in_channels=64, out_channels=128, layer_name='pool3')
 
-    conv_4 = conv3d_x3(pool, kernel_size=3, in_channels=256, out_channels=256, layer_name='conv_4')
-    pool = conv3d_as_pool(conv_4, kernel_size=3, in_channels=256, out_channels=512, layer_name='pool4')
+    conv_4 = conv3d_x3(pool, kernel_size=3, in_channels=128, out_channels=128, layer_name='conv_4')
+    pool = conv3d_as_pool(conv_4, kernel_size=3, in_channels=128, out_channels=256, layer_name='pool4')
 
-    bottom = conv3d_x3(pool, kernel_size=3, in_channels=512, out_channels=512, layer_name='bottom')
+    bottom = conv3d_x3(pool, kernel_size=3, in_channels=256, out_channels=256, layer_name='bottom')
 
-    deconv_4 = deconv3d_x3(conv_4, bottom,   kernel_size=3, in_channels=512, out_channels=256, layer_name='deconv_4')
+    # `rhs` doubles the output channels compared to the same level of `lhs`.
+    deconv_4 = deconv3d_x3(conv_4, bottom,   kernel_size=3, in_channels=256, out_channels=256, layer_name='deconv_4')
     deconv_3 = deconv3d_x3(conv_3, deconv_4, kernel_size=3, in_channels=256, out_channels=128, layer_name='deconv_3')
     deconv_2 = deconv3d_x3(conv_2, deconv_3, kernel_size=3, in_channels=128, out_channels=64, layer_name='deconv_2')
-    deconv_1 = deconv3d_x3(conv_1, deconv_2, kernel_size=3, in_channels=64,  out_channels=16, layer_name='deconv_1')
+    deconv_1 = deconv3d_x3(conv_1, deconv_2, kernel_size=3, in_channels=64,  out_channels=32, layer_name='deconv_1')
 
-    y_conv = conv3d(deconv_1, kernel_size=1, in_channels=16, out_channels=2, layer_name='output', activation_func=tf.identity)
+    # -------------------------------------------------------------------------------------------------------
+    # y_conv = tangled_conv3d(deconv_1, kernel_size=3, in_channels=32, out_channels=2, layer_name='improved_output')
+    # -------------------------------------------------------------------------------------------------------
+
+    y_conv = conv3d(deconv_1, kernel_size=1, in_channels=32, out_channels=2, layer_name='output')
 
     y_ = tf.placeholder(tf.float32, shape=[1, None, None, None, 1], name='y_input')
     wm = tf.placeholder(tf.float32, shape=[1, None, None, None, 1], name='weights_map')
 
     tf.summary.image('labels', y_[:, tf.shape(y_conv)[1] // 2, ..., 0, None])  # None to keep dims
-    tf.summary.image('weights', y_[:, tf.shape(y_conv)[1] // 2, ..., 0, None])  # None to keep dims
+    tf.summary.image('weights', wm[:, tf.shape(y_conv)[1] // 2, ..., 0, None])  # None to keep dims
 
     with tf.name_scope('loss'):
         y_softmax = tf.nn.softmax(y_conv)
-        # loss = dice_loss(y_, y_softmax)
-        loss = cross_entropy_loss(y_, y_softmax, wm)
+        loss = dice_loss(y_, y_softmax)
         dice_pct = evaluation_metrics(y_[..., 0], tf.argmax(y_conv, 4))
         tf.summary.scalar('dice', dice_pct)
         tf.summary.scalar('total_loss', loss)
@@ -87,7 +99,7 @@ def train():
         data = load_data(nii_index=np.random.choice(data_range))
         # Directly assign will make image and label to 4-d tensor.
         image, labele, weights = np.split(np.array(data), 3)
-        return {x: image, y_: labele, wm:weights, MODE: mode}
+        return {x: image, y_: labele, wm: weights, MODE: mode}
 
     with tf.Session() as sess:
         saver = tf.train.Saver()  # Add ops to save and restore all the variables.

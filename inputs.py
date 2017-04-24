@@ -4,8 +4,39 @@ import numpy as np
 import nibabel as nib
 
 from scipy.ndimage import generate_binary_structure, binary_dilation, binary_erosion
+from skimage.filters import sobel_h
+from skimage.exposure import adjust_gamma, adjust_sigmoid
 from skimage.transform import rotate, rescale
-from skimage.exposure import rescale_intensity, adjust_gamma, adjust_sigmoid
+
+def _get_boundary(im):
+    """Find the upper and lower boundary between body and background."""
+    edge_sobel = sobel_h(im)
+    threshold = np.max(edge_sobel) / 20
+    top, bottom = np.where(edge_sobel > threshold)[0][[0, -1]] # index arrays
+    return top, bottom
+
+def _banish_darkness(xs, ys):
+    """Clip black background region from nii raw data along y-axis, to alleviate computations.
+
+    Argument:
+        A tuple consists (image_3d, label_3d)
+            image_3d: int16 with shape [depth, height, width]
+            label_3d: uint8 with shape [depth, height, width]
+
+    Return:
+        tuples of (images, labels, top, bottom).
+        + images: [depth, reduced_height, width]
+        + labels: [depth, reduced_height, width]
+        + top: upper boundary
+        + bottom: lower boundary
+    """
+
+    boundaries = np.array([_get_boundary(im) for im in xs])
+    t, b = np.mean(boundaries, axis=0).astype(np.uint8)
+    # Empirically the lower boundary is more robust.
+    if (b - t) < 180:
+        t = b - 180
+    return xs[:, t: b, :], ys[:, t: b, :], t, b
 
 def _augment(xs):
     """Image adjustment doesn't change image shape, but for intensity.
@@ -27,8 +58,8 @@ def _rotate_and_rescale(xs, ys):
     required by skimage.transform library.
     """
 
-    degree = np.int(np.random.uniform(low=-7, high=7))
-    factor = np.random.uniform(low=0.9, high=1.2)
+    degree = np.int(np.random.uniform(low=-3, high=5))
+    factor = np.random.uniform(low=0.9, high=1.1)
     # swap axis
     HWC_xs, HWC_ys = [np.transpose(item, [1, 2, 0]) for item in [xs, ys]]
     # rotate and rescale
@@ -79,7 +110,11 @@ def weights_map(ys):
     return weights + edge + 1
 
 def load_data(base_path='./data/Train/', nii_index=0):
-    """Load nii data to numpy ndarray with **arbitrary** size.
+    """Load nii data to numpy ndarray [depth, height, width] with arbitrary size.
+    Additionally,
+        depth: scanner left-right
+        height: scanner floor-ceiling
+        width: scanner bore
 
     Return:
         tuples of (images, labels).
@@ -92,6 +127,9 @@ def load_data(base_path='./data/Train/', nii_index=0):
     image_path = [p.replace('_Label', '') for p in label_path]
 
     xs, ys = [nib.load(p[nii_index]).get_data() for p in [image_path, label_path]]
+
+    # Crop black region to reduce nii volumes.
+    xs, ys, *_ = _banish_darkness(xs, ys)
 
     # Normalize image to range [0, 1] for image processing.
     local_max = np.max(xs, axis=(1, 2), keepdims=True)
@@ -127,8 +165,9 @@ def load_inference(base_path='./data/Test/Test_Subject', nii_index=0):
     filename = base_path + str(nii_index + 1).zfill(2) + '.nii'
     xs = nib.load(filename).get_data()
 
-    xs = rescale_intensity(xs, out_range=np.uint8)
-    xs = xs / np.max(xs)
+    # Crop black region to reduce nii volumes.
+    dummy_ys = np.zeros_like(xs)
+    xs, *_ = _banish_darkness(xs, dummy_ys)
 
     # Normalize images.
     local_max = np.max(xs, axis=(1, 2), keepdims=True)
