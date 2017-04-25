@@ -8,12 +8,12 @@ from layers import *
 with open('config.json', 'r') as f:
     conf = json.load(f)
 
-conf['IS_TRAIN_FROM_SCRATCH'] = 'False'
-conf['LEARNING_RATE'] = 3e-6
+conf['IS_TRAIN_FROM_SCRATCH'] = 'True'
+conf['LEARNING_RATE'] = 5e-6
 conf['LOG_DIR'] += 'refineNet/'
 conf['CHECKPOINTS_DIR'] += 'refineNet/'
 
-def _conv3d_x2(inputs, kernel_size, in_channels, out_channels, layer_name, activation_func=tf.nn.relu):
+def _rcu(inputs, kernel_size, in_channels, out_channels, layer_name, activation_func=tf.nn.relu):
     """Implement the Residual Conv Uint, note here put the `relu` after `conv` cause IVDs segmentation does not need pretraining."""
     with tf.name_scope(layer_name):
         z = conv3d(inputs, kernel_size, in_channels, out_channels, 'dense_1')
@@ -44,24 +44,22 @@ def train():
         tf.summary.image('images', x[:, tf.shape(x)[1] // 2])  # requires 4-d tensor, here takes the middle slice across x-axis
 
     conv_1 = conv3d_x3(x, kernel_size=3, in_channels=1, out_channels=16, layer_name='conv_1')
-    mini_1 = conv3d_as_pool(conv_1, 3, 16, 64, 'scaled_x2')  # 1 / 2 size of original images
+    mini_1 = conv3d_as_pool(conv_1, 3, 16, 16, 'scaled_x2')  # 1 / 2 size of original images
 
-    conv_2 = conv3d_x3(mini_1, kernel_size=3, in_channels=64, out_channels=64, layer_name='conv_2')
-    mini_2 = conv3d_as_pool(conv_2, 3, 64, 128, 'scaled_x4')
+    conv_2 = conv3d_x3(mini_1, kernel_size=3, in_channels=16, out_channels=64, layer_name='conv_2')
+    mini_2 = conv3d_as_pool(conv_2, 3, 64, 64, 'scaled_x4')
 
-    conv_3 = conv3d_x3(mini_2, kernel_size=3, in_channels=128, out_channels=128, layer_name='conv_3')
-    mini_3 = conv3d_as_pool(conv_3, 3, 128, 256, 'scaled_x8')
+    conv_3 = conv3d_x3(mini_2, kernel_size=3, in_channels=64, out_channels=256, layer_name='conv_3')
+    mini_3 = conv3d_as_pool(conv_3, 3, 256, 256, 'scaled_x8')
 
-    conv_4 = conv3d_x3(mini_3, kernel_size=3, in_channels=256, out_channels=256, layer_name='conv_4')
-    mini_4 = conv3d_as_pool(conv_4, 3, 256, 512, 'scaled_x16')
+    conv_4 = conv3d_x3(mini_3, kernel_size=3, in_channels=256, out_channels=512, layer_name='conv_4')
+    mini_4 = conv3d_as_pool(conv_4, 3, 512, 512, 'scaled_x16')
 
-    conv_5 = conv3d_x3(mini_4, kernel_size=3, in_channels=512, out_channels=512, layer_name='conv_5')
-
-    with tf.name_scope('refineNet_5'):
+    with tf.name_scope('refineNet_4'):
         with tf.name_scope('rcu'):
             # Residual Conv Unit
-            rcu = _conv3d_x2(conv_5, 3, 512, 512, 'rcu_1')
-            rcu = _conv3d_x2(rcu, 3, 512, 512, 'rcu_2')
+            rcu = _rcu(mini_4, 3, 512, 512, 'rcu_1')
+            rcu = _rcu(rcu, 3, 512, 512, 'rcu_2')
         with tf.name_scope('fusion'):
             # The bottom only takes one inputs so no real fusion.
             fusion = tf.identity(rcu, name='fusion')
@@ -69,68 +67,51 @@ def train():
             # Chained Residual Pooling.
             res_pool = _chained_res_pool(fusion, kernel_size=5, strides=1, in_channels=512, out_channels=512, layer_name='pool')
         with tf.name_scope('output'):
-            out = _conv3d_x2(res_pool, 3, 512, 512, 'output')
-
-    with tf.name_scope('refineNet_4'):
-        with tf.name_scope('rcu'):
-            # Generates feature maps of the same feature dimension, the smallest one.
-            with tf.name_scope('from_4'):
-                rcu_4 = _conv3d_x2(conv_4, 3, 256, 256, 'rcu4_1')
-                rcu_4 = _conv3d_x2(rcu_4, 3, 256, 256, 'rcu4_2')
-            with tf.name_scope('from_5'):
-                rcu_5 = _conv3d_x2(out, 3, 512, 512, 'rcu5_1')
-                rcu_5 = _conv3d_x2(rcu_5, 3, 512, 512, 'rcu5_2')
-        with tf.name_scope('fusion'):
-            fusion_4 = tf.identity(rcu_4, name='fusion4')
-            fusion_5 = deconv3d_as_up(rcu_5, 3, 512, 256, 'fusion5')
-            fusion = fusion_4 + crop(fusion_5, fusion_4)
-        with tf.name_scope('pool'):
-            res_pool = _chained_res_pool(fusion, kernel_size=5, strides=1, in_channels=256, out_channels=256, layer_name='pool')
-        with tf.name_scope('output'):
-            out = conv_4 + _conv3d_x2(res_pool, 3, 256, 256, 'output')
+            out = _rcu(res_pool, 3, 512, 512, 'output')
 
     with tf.name_scope('refineNet_3'):
         with tf.name_scope('rcu'):
+            # Generates feature maps of the same feature dimension, the smallest one.
             with tf.name_scope('from_3'):
-                rcu_3 = _conv3d_x2(conv_3, 3, 128, 128, 'rcu3_1')
-                rcu_3 = _conv3d_x2(rcu_3, 3, 128, 128, 'rcu3_2')
+                rcu_3 = _rcu(mini_3, 3, 256, 256, 'rcu3_1')
+                rcu_3 = _rcu(rcu_3, 3, 256, 256, 'rcu3_2')
             with tf.name_scope('from_4'):
-                rcu_4 = _conv3d_x2(out, 3, 256, 256, 'rcu4_1')
-                rcu_4 = _conv3d_x2(rcu_4, 3, 256, 256, 'rcu4_2')
+                rcu_4 = _rcu(out, 3, 512, 512, 'rcu4_1')
+                rcu_4 = _rcu(rcu_4, 3, 512, 512, 'rcu4_2')
         with tf.name_scope('fusion'):
             fusion_3 = tf.identity(rcu_3, name='fusion3')
-            fusion_4 = deconv3d_as_up(rcu_4, 3, 256, 128, 'fusion4')
+            fusion_4 = deconv3d_as_up(rcu_4, 3, 512, 256, 'fusion4')
             fusion = fusion_3 + crop(fusion_4, fusion_3)
         with tf.name_scope('pool'):
-            res_pool = _chained_res_pool(fusion, kernel_size=5, strides=1, in_channels=128, out_channels=128, layer_name='pool')
+            res_pool = _chained_res_pool(fusion, kernel_size=5, strides=1, in_channels=256, out_channels=256, layer_name='pool')
         with tf.name_scope('output'):
-            out = conv_3 + _conv3d_x2(res_pool, 3, 128, 128, 'output')
+            out = mini_3 + _rcu(res_pool, 3, 256, 256, 'output')
 
     with tf.name_scope('refineNet_2'):
         with tf.name_scope('rcu'):
             with tf.name_scope('from_2'):
-                rcu_2 = _conv3d_x2(conv_2, 3, 64, 64, 'rcu2_1')
-                rcu_2 = _conv3d_x2(rcu_2, 3, 64, 64, 'rcu2_2')
+                rcu_2 = _rcu(mini_2, 3, 64, 64, 'rcu2_1')
+                rcu_2 = _rcu(rcu_2, 3, 64, 64, 'rcu2_2')
             with tf.name_scope('from_3'):
-                rcu_3 = _conv3d_x2(out, 3, 128, 128, 'rcu3_1')
-                rcu_3 = _conv3d_x2(rcu_3, 3, 128, 128, 'rc13_2')
+                rcu_3 = _rcu(out, 3, 256, 256, 'rcu3_1')
+                rcu_3 = _rcu(rcu_3, 3, 256, 256, 'rcu3_2')
         with tf.name_scope('fusion'):
             fusion_2 = tf.identity(rcu_2, name='fusion2')
-            fusion_3 = deconv3d_as_up(rcu_3, 2, 128, 64, 'fusion3')
+            fusion_3 = deconv3d_as_up(rcu_3, 3, 256, 64, 'fusion3')
             fusion = fusion_2 + crop(fusion_3, fusion_2)
         with tf.name_scope('pool'):
             res_pool = _chained_res_pool(fusion, kernel_size=5, strides=1, in_channels=64, out_channels=64, layer_name='pool')
         with tf.name_scope('output'):
-            out = conv_2 + _conv3d_x2(res_pool, 3, 64, 64, 'output')
+            out = mini_2 + _rcu(res_pool, 3, 64, 64, 'output')
 
     with tf.name_scope('refineNet_1'):
         with tf.name_scope('rcu'):
             with tf.name_scope('from_1'):
-                rcu_1 = _conv3d_x2(conv_1, 3, 16, 16, 'rcu1_1')
-                rcu_1 = _conv3d_x2(rcu_1, 3, 16, 16, 'rcu1_2')
+                rcu_1 = _rcu(mini_1, 3, 16, 16, 'rcu1_1')
+                rcu_1 = _rcu(rcu_1, 3, 16, 16, 'rcu1_2')
             with tf.name_scope('from_2'):
-                rcu_2 = _conv3d_x2(out, 3, 64, 64, 'rcu2_1')
-                rcu_2 = _conv3d_x2(rcu_2, 3, 64, 64, 'rcu2_2')
+                rcu_2 = _rcu(out, 3, 64, 64, 'rcu2_1')
+                rcu_2 = _rcu(rcu_2, 3, 64, 64, 'rcu2_2')
         with tf.name_scope('fusion'):
             fusion_1 = tf.identity(rcu_1, name='fusion1')
             fusion_2 = deconv3d_as_up(rcu_2, 2, 64, 16, 'fusion2')
@@ -138,10 +119,26 @@ def train():
         with tf.name_scope('pool'):
             res_pool = _chained_res_pool(fusion, kernel_size=5, strides=1, in_channels=16, out_channels=16, layer_name='pool')
         with tf.name_scope('output'):
-            out = conv_1 + _conv3d_x2(res_pool, 3, 16, 16, 'output')
+            out = mini_1 + _rcu(res_pool, 3, 16, 16, 'output')
+
+    with tf.name_scope('refineNet_out'):
+        with tf.name_scope('rcu'):
+            with tf.name_scope('from_x'):
+                rcu_x = _rcu(conv_1, 3, 16, 16, 'rcux_1')
+                rcu_x = _rcu(rcu_x, 3, 16, 16, 'rcux_2')
+            with tf.name_scope('from_1'):
+                rcu_1 = _rcu(out, 3, 16, 16, 'rcu1_1')
+                rcu_1 = _rcu(rcu_1, 3, 16, 16, 'rcu1_2')
+        with tf.name_scope('fusion'):
+            fusion_x = conv3d(rcu_x, 3, 16, 16, layer_name='fusionx')
+            fusion_1 = deconv3d_as_up(rcu_1, 2, 16, 16, 'fusion1')
+            fusion = fusion_x + crop(fusion_1, fusion_x)
+        with tf.name_scope('pool'):
+            res_pool = _chained_res_pool(fusion, kernel_size=5, strides=1, in_channels=16, out_channels=16, layer_name='pool')
 
     with tf.name_scope('output'):
-        y_conv = conv3d(out, 1, 16, 2, 'y_conv', activation_func=tf.identity)
+        pre_out = conv_1 + _rcu(res_pool, 3, 16, 16, 'pre_out')
+        y_conv = conv3d(pre_out, 1, 16, 2, 'y_conv')
         tf.summary.image('y_conv_0', y_conv[:, tf.shape(y_conv)[1] // 2, ..., 0, None])
         tf.summary.image('y_conv_1', y_conv[:, tf.shape(y_conv)[1] // 2, ..., 1, None])
 
